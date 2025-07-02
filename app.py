@@ -3,14 +3,14 @@ import subprocess
 import os
 import uuid
 from pathlib import Path
-import shutil # コマンドのパスを探索するために必要
+import shutil
 import base64
 import mimetypes
 
-# --- Streamlit アプリの基本設定 ---
-st.set_page_config(layout="wide", page_title="セミナーポスター自動生成")
+# --- Streamlit App Config ---
+st.set_page_config(layout="wide", page_title="Seminar Poster Generator")
 
-# --- Custom CSS for spacing ---
+# --- Custom CSS for Spacing ---
 st.markdown("""
     <style>
         .block-container {
@@ -22,34 +22,33 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 定数と設定 ---
+# --- Constants and Setup ---
 OUTPUT_DIR = Path("output")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# カラーテーマの定義
 COLOR_THEMES = {
-    "ブルー/イエロー (デフォルト)": {
+    "Blue/Yellow (Default)": {
         "header_bg": "linear-gradient(135deg, #003f7f 0%,rgb(0, 120, 212) 100%)",
         "info_bg": "linear-gradient(135deg, #ffd700 0%,hsl(51, 98.50%, 73.90%) 100%)",
         "info_border": "#f0c814",
         "info_shadow": "rgba(255, 215, 0, 0.3)",
         "main_text": "#003f7f",
     },
-    "グリーン/オレンジ": {
+    "Green/Orange": {
         "header_bg": "linear-gradient(135deg, #005a32 0%, #1e8449 100%)",
         "info_bg": "linear-gradient(135deg, #f39c12 0%, #e67e22 100%)",
         "info_border": "#d35400",
         "info_shadow": "rgba(243, 156, 18, 0.3)",
         "main_text": "#005a32",
     },
-    "パープル/ミント": {
+    "Purple/Mint": {
         "header_bg": "linear-gradient(135deg, #4a148c 0%, #8e44ad 100%)",
         "info_bg": "linear-gradient(135deg, #a7ffeb 0%, #64ffda 100%)",
         "info_border": "#1de9b6",
         "info_shadow": "rgba(100, 255, 218, 0.3)",
         "main_text": "#4a148c",
     },
-    "モノクローム": {
+    "Monochrome": {
         "header_bg": "linear-gradient(135deg, #2c3e50 0%, #34495e 100%)",
         "info_bg": "linear-gradient(135deg, #ecf0f1 0%, #bdc3c7 100%)",
         "info_border": "#95a5a6",
@@ -58,58 +57,49 @@ COLOR_THEMES = {
     }
 }
 
-# --- Marp CLI 自動セットアップ ---
+# --- Marp CLI Setup for Streamlit Cloud ---
 def setup_marp_cli():
     """
-    Marp CLIがインストールされているか確認し、なければインストールする。
-    Streamlit Cloudの環境に特化した、最も堅牢な方法で実行する。
+    Robustly installs and finds Marp CLI for Streamlit Cloud environments.
     """
-    # Define the direct path to the marp-cli javascript file
     home = os.path.expanduser("~")
     marp_script_path = os.path.join(home, ".local", "lib", "node_modules", "@marp-team", "marp-cli", "marp-cli.js")
 
     if os.path.exists(marp_script_path):
         return ["node", marp_script_path]
 
-    st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
-    with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
+    st.warning("Marp CLI not found. Installing automatically...")
+    with st.spinner("Installing Marp CLI... (This may take a moment on first run)"):
         try:
-            # Use a specific, older version of Marp CLI compatible with Node.js v12
             command = "npm install --prefix ~/.local @marp-team/marp-cli@1.7.1"
             subprocess.run(command, shell=True, check=True, capture_output=True, text=True, encoding='utf-8')
             
             if os.path.exists(marp_script_path):
-                st.success("Marp CLIのインストールが完了しました！ページを再読み込みします。")
+                st.success("Marp CLI installed successfully! Rerunning page...")
                 st.experimental_rerun()
             else:
-                st.error("Marp CLIのインストールには成功しましたが、実行ファイルを見つけられませんでした。")
+                st.error("Marp CLI installation succeeded, but the executable could not be found.")
                 return None
-        except subprocess.CalledProcessError as e:
-            st.error("Marp CLIのインストールに失敗しました。")
-            st.error("エラー詳細:")
-            st.code(e.stderr)
-            return None
-        except FileNotFoundError:
-            st.error("`npm` コマンドが見つかりません。")
+        except Exception as e:
+            st.error(f"Failed to install Marp CLI. Error: {e}")
+            if hasattr(e, 'stderr'):
+                st.code(e.stderr)
             return None
 
 MARP_PATH = setup_marp_cli()
 
-
-# --- Markdown生成関数 ---
+# --- Markdown Generation ---
 def generate_markdown(
     colloquium_name, title, photo_path, speaker_name, affiliation,
     date_time, location, abstract, colors, abstract_font_size, abstract_height,
     title_font_size
 ):
-    # (この関数の中身は変更なし)
     style_css = f"""
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
-  
   section {{
     display: flex; flex-direction: column; padding: 0; 
-    font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', sans-serif;
+    font-family: 'Noto Sans JP', sans-serif;
     background: linear-gradient(135deg, #f1f3f6 0%, #e8eef4 100%);
     overflow: hidden;
   }}
@@ -150,18 +140,6 @@ def generate_markdown(
   .affiliation {{
     font-size: 1.0em; color: #666; line-height: 1.4; font-weight: 400;
   }}
-  .right-panel {{ flex: 1; display: flex; flex-direction: column; gap: 30px; }}
-  .info-section {{
-    background: {colors['info_bg']};
-    padding: 25px; border-radius: 12px;
-    box-shadow: 0 4px 12px {colors['info_shadow']};
-    border: 2px solid {colors['info_border']};
-  }}
-  .event-info {{
-    display: grid; grid-template-columns: auto 1fr; gap: 15px 25px; font-size: 0.9em;
-  }}
-  .info-label {{ font-weight: 700; color: {colors['main_text']}; }}
-  .info-value {{ color: {colors['main_text']}; font-weight: 500; }}
   .abstract {{
     background-color: white; padding: 25px; border-radius: 12px;
     box-shadow: 0 4px 12px rgba(1, 36, 72, 0.15);
@@ -177,16 +155,10 @@ def generate_markdown(
     font-size: {abstract_font_size}em; line-height: 1.6; color: #333; text-align: justify;
     margin-bottom: 12px; font-weight: 400;
   }}
-
-  .abstract p:last-of-type {{
-    margin-bottom: 0;
-  }}
 </style>
 """
-    processed_abstract = " ".join(abstract.strip().splitlines())
-    abstract_html = f"<p>{processed_abstract}</p>"
-    # Process affiliation to include line breaks
     affiliation_html = affiliation.replace('\n', '<br>')
+    abstract_html = f"<p>{' '.join(abstract.strip().splitlines())}</p>"
     content_html = f"""
 <div class="header-container">
   <div class="colloquium-name">{colloquium_name}</div>
@@ -194,7 +166,7 @@ def generate_markdown(
 </div>
 <div class="main-content">
   <div class="left-panel">
-    <img src="{photo_path}" alt="講演者写真" class="speaker-photo">
+    <img src="{photo_path}" alt="Speaker Photo" class="speaker-photo">
     <div class="speaker-info">
       <div class="speaker-name">{speaker_name}</div>
       <div class="affiliation">{affiliation_html}</div>
@@ -203,12 +175,12 @@ def generate_markdown(
   <div class="right-panel">
     <div class="info-section">
       <div class="event-info">
-        <div class="info-label">日時：</div> <div class="info-value">{date_time}</div>
-        <div class="info-label">場所：</div> <div class="info-value">{location}</div>
+        <div class="info-label">Date:</div> <div class="info-value">{date_time}</div>
+        <div class="info-label">Location:</div> <div class="info-value">{location}</div>
       </div>
     </div>
     <div class="abstract">
-      <div class="abstract-title">講演概要</div>
+      <div class="abstract-title">Abstract</div>
       {abstract_html}
     </div>
   </div>
@@ -224,100 +196,81 @@ size: 16:9
 {content_html}
 """
 
-# --- Streamlit アプリ本体 ---
-st.title("セミナーポスター自動生成ツール")
+# --- Main App ---
+st.title("Seminar Poster Generator")
 
 if not MARP_PATH:
-    st.error("Marp CLIのセットアップが完了していません。上記のエラーメッセージをご確認ください。")
+    st.error("Marp CLI setup is incomplete. Please check the error messages above.")
     st.stop()
 
-st.markdown("左のサイドバーから情報を入力し、リアルタイムプレビューで確認してください。")
-
-# --- サイドバー (入力フォーム) ---
+# --- Sidebar Inputs ---
 with st.sidebar:
-    st.header("ポスター情報入力")
-    colloquium_name = st.text_input("セミナー名", "物理学教室コロキウム")
-    title = st.text_input("講演タイトル", "物理的物理学の精密な物理学")
-    speaker_name = st.text_input("講演者名", "東大 太郎 氏")
-    affiliation = st.text_area("所属", "東京大学大学院\n理学系研究科")
-    date_time = st.text_input("日時", "2025年6月20日（金）17:00-18:30")
-    location = st.text_input("場所", "小柴ホール")
-    uploaded_photo = st.file_uploader("講演者の写真", type=['jpg', 'png', 'jpeg'])
-    abstract = st.text_area("講演概要", "物理学とは...（以下略）", height=300)
+    st.header("Poster Information")
+    colloquium_name = st.text_input("Colloquium Name", "Physics Dept. Colloquium")
+    title = st.text_input("Presentation Title", "The Precise Physics of Polymer Gels")
+    speaker_name = st.text_input("Speaker Name", "Dr. Takamasa Sakai")
+    affiliation = st.text_area("Affiliation", "The University of Tokyo\nGraduate School of Engineering")
+    date_time = st.text_input("Date & Time", "June 20, 2025, 17:00-18:30")
+    location = st.text_input("Location", "Koshiba Hall")
+    uploaded_photo = st.file_uploader("Speaker's Photo", type=['jpg', 'png', 'jpeg'])
+    abstract = st.text_area("Abstract", "A hydrogel is a polymer network swollen with a large amount of water...", height=200)
 
-    st.header("デザイン設定")
-    selected_theme_name = st.selectbox("カラーテーマ", COLOR_THEMES.keys())
-    selected_colors = COLOR_THEMES[selected_theme_name]
-    title_font_size = st.slider("タイトルのフォントサイズ", min_value=1.0, max_value=4.0, value=2.8, step=0.1)
-    abstract_font_size = st.slider("概要のフォントサイズ", min_value=0.5, max_value=1.0, value=0.65, step=0.05)
-    abstract_height = st.slider("概要ボックスの高さ", min_value=100, max_value=500, value=250, step=10)
+    st.header("Design Settings")
+    selected_theme_name = st.selectbox("Color Theme", COLOR_THEMES.keys())
+    title_font_size = st.slider("Title Font Size", 1.0, 4.0, 2.8, 0.1)
+    abstract_font_size = st.slider("Abstract Font Size", 0.5, 1.0, 0.65, 0.05)
+    abstract_height = st.slider("Abstract Box Height (px)", 100, 500, 250, 10)
 
-# --- メイン画面 (プレビューと生成ボタン) ---
+# --- Image Handling ---
 if uploaded_photo:
-    # Read image bytes and convert to a Data URI for embedding
     image_bytes = uploaded_photo.getvalue()
-    b64_string = base64.b64encode(image_bytes).decode()
     mime_type = mimetypes.guess_type(uploaded_photo.name)[0]
-    photo_display_path = f"data:{mime_type};base64,{b64_string}"
+    photo_display_path = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode()}"
 else:
-    # Default placeholder image as a self-contained, Base64-encoded SVG
-    placeholder_svg = """<svg width="250" height="250" viewBox="0 0 250 250" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#e9ecef"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#6c757d">写真なし</text></svg>"""
-    b64_svg = base64.b64encode(placeholder_svg.encode('utf-8')).decode('utf-8')
-    photo_display_path = f"data:image/svg+xml;base64,{b64_svg}"
+    placeholder_svg = """<svg width="250" height="250" viewBox="0 0 250 250" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#e9ecef"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#6c757d">No Photo</text></svg>"""
+    photo_display_path = f"data:image/svg+xml;base64,{base64.b64encode(placeholder_svg.encode()).decode()}"
 
+# --- Markdown and Preview Generation ---
 markdown_content = generate_markdown(
     colloquium_name, title, photo_display_path, speaker_name, affiliation,
-    date_time, location, abstract, selected_colors, abstract_font_size, abstract_height,
-    title_font_size
+    date_time, location, abstract, COLOR_THEMES[selected_theme_name], 
+    abstract_font_size, abstract_height, title_font_size
 )
 
-st.subheader("プレビュー")
-st.markdown("必要に応じてタイトルのフォントサイズ、概要のフォントサイズ、概要ボックスの高さを調整してください。")
-
+st.subheader("Live Preview")
 md_path = OUTPUT_DIR / "preview.md"
 html_path = OUTPUT_DIR / "preview.html"
 md_path.write_text(markdown_content, encoding="utf-8")
 
 try:
-    # MARP_PATH is now a list like ["node", "/path/to/marp-cli.js"]
-    subprocess.run(
-        MARP_PATH + [str(md_path), "-o", str(html_path), "--html", "--allow-local-files"],
-        check=True, capture_output=True, text=True, encoding='utf-8'
-    )
+    cmd = MARP_PATH + [str(md_path), "-o", str(html_path), "--html", "--allow-local-files"]
+    subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     st.components.v1.html(html_content, height=550, scrolling=False)
-except (subprocess.CalledProcessError, FileNotFoundError) as e:
-    st.error("プレビューの生成に失敗しました。")
+except Exception as e:
+    st.error("Failed to generate preview.")
     if hasattr(e, 'stderr'):
         st.code(e.stderr)
 
-# Create a placeholder for the download button
-pdf_download_placeholder = st.empty()
-
-if not uploaded_photo:
-    pdf_download_placeholder.warning("PDFを生成・ダウンロードするには、講演者の写真をアップロードしてください。")
-else:
-    # Generate PDF in memory when the button is clicked
+# --- PDF Download ---
+st.header("Generate PDF")
+if uploaded_photo:
     pdf_path = OUTPUT_DIR / "poster.pdf"
     try:
-        # PDFを生成
-        subprocess.run(
-            MARP_PATH + [str(md_path), "-o", str(pdf_path), "--pdf", "--allow-local-files"],
-            check=True, capture_output=True, text=True, encoding='utf-8'
-        )
-        # 生成したPDFを読み込む
+        cmd = MARP_PATH + [str(md_path), "-o", str(pdf_path), "--pdf", "--allow-local-files"]
+        subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
         with open(pdf_path, "rb") as f:
-            pdf_data = f.read()
-        
-        pdf_download_placeholder.download_button(
-            label="ポスターPDFをダウンロード",
-            data=pdf_data,
-            file_name="colloquium_poster.pdf",
-            mime="application/pdf",
-            type="primary"
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        st.error("PDFの生成に失敗しました。")
+            st.download_button(
+                label="Download Poster PDF",
+                data=f.read(),
+                file_name="colloquium_poster.pdf",
+                mime="application/pdf",
+                type="primary"
+            )
+    except Exception as e:
+        st.error("Failed to generate PDF.")
         if hasattr(e, 'stderr'):
             st.code(e.stderr)
+else:
+    st.warning("Please upload a photo to generate and download the PDF.")
