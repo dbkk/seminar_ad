@@ -64,23 +64,32 @@ def find_or_install_marp_cli():
     Finds Marp CLI in PATH or installs it for Streamlit Cloud.
     This function is cached for the session.
     """
-    # 1. Check standard PATH first (best for local development)
+    # 1. Check standard PATH first (for local development)
     marp_path = shutil.which("marp")
     if marp_path:
         print(f"Marp CLI found in PATH: {marp_path}")
         return marp_path
 
-    # 2. If not in PATH, check the specific location for Streamlit Cloud
+    # 2. Check common installation paths for Streamlit Cloud
     home = Path.home()
-    cloud_marp_path = home / ".local" / "bin" / "marp"
-    if cloud_marp_path.exists():
-        print(f"Marp CLI found in Streamlit Cloud custom path: {cloud_marp_path}")
-        return str(cloud_marp_path)
+    install_prefix = home / ".local"
+    
+    # Possible path 1: [prefix]/bin/marp
+    path1 = install_prefix / "bin" / "marp"
+    # Possible path 2: [prefix]/node_modules/.bin/marp (more common with modern npm)
+    path2 = install_prefix / "node_modules" / ".bin" / "marp"
+    
+    if path1.exists():
+        print(f"Marp CLI found in custom path 1: {path1}")
+        return str(path1)
+    if path2.exists():
+        print(f"Marp CLI found in custom path 2: {path2}")
+        return str(path2)
 
-    # 3. If not found anywhere, install it (for Streamlit Cloud's first run)
+    # 3. If not found, proceed to install
     print("Marp CLI not found, starting installation...")
     try:
-        command = "npm install --prefix ~/.local @marp-team/marp-cli"
+        command = f"npm install --prefix {install_prefix} @marp-team/marp-cli"
         result = subprocess.run(
             command,
             shell=True,
@@ -90,28 +99,41 @@ def find_or_install_marp_cli():
             encoding='utf-8'
         )
         print(f"Marp CLI installation successful:\n{result.stdout}")
-        
-        # Check again if the path now exists after installation
-        if cloud_marp_path.exists():
+
+        # Re-check the paths after installation
+        if path1.exists():
             st.success("Marp CLIのインストールが完了しました！")
-            # We don't rerun here. The app flow continues, and the next time
-            # something needs Marp, this function will return the correct path.
-            # However, for a better user experience on first load, we can trigger a rerun.
             st.rerun()
-            return str(cloud_marp_path)
+        elif path2.exists():
+            st.success("Marp CLIのインストールが完了しました！")
+            st.rerun()
         else:
-            st.error("Marp CLIをインストールしましたが、実行ファイルが見つかりません。")
-            st.code(f"想定パス: {cloud_marp_path}")
-            return None
+            # Last resort: search for the executable if standard paths fail
+            print(f"Marp executable not found in standard paths ({path1}, {path2}). Searching...")
+            found_files = list(install_prefix.glob("**/marp"))
+            if found_files:
+                found_path = found_files[0]
+                print(f"Marp CLI found via search: {found_path}")
+                st.success("Marp CLIのインストールが完了しました！")
+                st.rerun()
+            else:
+                st.error("Marp CLIをインストールしましたが、実行ファイルが見つかりません。")
+                st.warning("インストールログ:")
+                st.code(result.stdout, language="bash")
+                return None
 
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         st.error("Marp CLIのインストールに失敗しました。")
         if isinstance(e, subprocess.CalledProcessError):
             st.error(f"終了コード: {e.returncode}")
+            st.warning("標準エラー(stderr):")
             st.code(e.stderr, language="bash")
         else:
             st.error("`npm`コマンドが見つかりませんでした。`packages.txt`に`nodejs`と`npm`が含まれているか確認してください。")
         return None
+    
+    # This part should not be reached if rerun works, but as a fallback
+    return None
 
 # --- Main App ---
 # st.title("セミナーポスター自動生成ツール")
