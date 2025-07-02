@@ -62,33 +62,33 @@ COLOR_THEMES = {
 def setup_marp_cli():
     """
     Marp CLIがインストールされているか確認し、なければインストールする。
-    Streamlit Cloudの権限エラーを回避するため、ユーザーのローカルディレクトリにインストールする。
+    Streamlit Cloudの古いNode.jsバージョンと権限エラーに対応する。
     """
-    # Check for marp in the expected local installation path first
+    # The only reliable path on Streamlit Cloud after local installation
     local_marp_path = os.path.expanduser("~/.local/bin/marp")
+    
     if os.path.exists(local_marp_path):
         return local_marp_path
 
-    # Fallback to checking the system PATH
-    marp_path = shutil.which("marp")
-    if marp_path:
-        return marp_path
+    # Fallback for local development
+    if shutil.which("marp"):
+        return shutil.which("marp")
 
     st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
     with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
         try:
-            # Install locally to avoid permission errors on Streamlit Cloud
-            command = "npm install --prefix ~/.local @marp-team/marp-cli@2.5.0"
+            # Use a specific, older version of Marp CLI compatible with Node.js v12
+            # and install it locally to the user's home directory to avoid permission errors.
+            command = "npm install --prefix ~/.local @marp-team/marp-cli@1.7.1"
+            
             result = subprocess.run(
                 command,
                 shell=True, check=True, capture_output=True, text=True, encoding='utf-8'
             )
             
             if os.path.exists(local_marp_path):
-                st.success("Marp CLIのインストールが完了しました！")
-                # Force reload to ensure the new path is recognized
+                st.success("Marp CLIのインストールが完了しました！ページを再読み込みします。")
                 st.experimental_rerun()
-                return local_marp_path
             else:
                 st.error("Marp CLIのインストールには成功しましたが、パスを検出できませんでした。")
                 st.code(result.stdout)
