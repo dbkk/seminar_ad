@@ -62,37 +62,27 @@ COLOR_THEMES = {
 def setup_marp_cli():
     """
     Marp CLIがインストールされているか確認し、なければインストールする。
-    Streamlit Cloudの古いNode.jsバージョンと権限エラーに対応する。
+    Streamlit Cloudの環境に特化した、最も堅牢な方法で実行する。
     """
-    # The only reliable path on Streamlit Cloud after local installation
-    local_marp_path = os.path.expanduser("~/.local/bin/marp")
-    
-    if os.path.exists(local_marp_path):
-        return local_marp_path
+    # Define the direct path to the marp-cli javascript file
+    home = os.path.expanduser("~")
+    marp_script_path = os.path.join(home, ".local", "lib", "node_modules", "@marp-team", "marp-cli", "marp-cli.js")
 
-    # Fallback for local development
-    if shutil.which("marp"):
-        return shutil.which("marp")
+    if os.path.exists(marp_script_path):
+        return ["node", marp_script_path]
 
     st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
     with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
         try:
             # Use a specific, older version of Marp CLI compatible with Node.js v12
-            # and install it locally to the user's home directory to avoid permission errors.
             command = "npm install --prefix ~/.local @marp-team/marp-cli@1.7.1"
+            subprocess.run(command, shell=True, check=True, capture_output=True, text=True, encoding='utf-8')
             
-            result = subprocess.run(
-                command,
-                shell=True, check=True, capture_output=True, text=True, encoding='utf-8'
-            )
-            
-            if os.path.exists(local_marp_path):
+            if os.path.exists(marp_script_path):
                 st.success("Marp CLIのインストールが完了しました！ページを再読み込みします。")
                 st.experimental_rerun()
             else:
-                st.error("Marp CLIのインストールには成功しましたが、パスを検出できませんでした。")
-                st.code(result.stdout)
-                st.code(result.stderr)
+                st.error("Marp CLIのインストールには成功しましたが、実行ファイルを見つけられませんでした。")
                 return None
         except subprocess.CalledProcessError as e:
             st.error("Marp CLIのインストールに失敗しました。")
@@ -289,8 +279,9 @@ html_path = OUTPUT_DIR / "preview.html"
 md_path.write_text(markdown_content, encoding="utf-8")
 
 try:
+    # MARP_PATH is now a list like ["node", "/path/to/marp-cli.js"]
     subprocess.run(
-        [MARP_PATH, str(md_path), "-o", str(html_path), "--html", "--allow-local-files"],
+        MARP_PATH + [str(md_path), "-o", str(html_path), "--html", "--allow-local-files"],
         check=True, capture_output=True, text=True, encoding='utf-8'
     )
     with open(html_path, "r", encoding="utf-8") as f:
@@ -312,7 +303,7 @@ else:
     try:
         # PDFを生成
         subprocess.run(
-            [MARP_PATH, str(md_path), "-o", str(pdf_path), "--pdf", "--allow-local-files"],
+            MARP_PATH + [str(md_path), "-o", str(pdf_path), "--pdf", "--allow-local-files"],
             check=True, capture_output=True, text=True, encoding='utf-8'
         )
         # 生成したPDFを読み込む
