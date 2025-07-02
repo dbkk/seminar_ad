@@ -59,85 +59,49 @@ COLOR_THEMES = {
 }
 
 # --- Marp CLI 自動セットアップ ---
-@st.cache_resource
 def setup_marp_cli():
     """
-    nvmを使用してNode.js v18をインストールし、その環境でMarp CLIをインストールする。
+    Marp CLIがインストールされているか確認し、なければインストールする。
     """
-    # nvmの環境変数を設定
-    home = os.path.expanduser("~")
-    nvm_dir = os.path.join(home, ".nvm")
-    nvm_sh = os.path.join(nvm_dir, "nvm.sh")
-    
-    # marpコマンドのフルパスを探す
-    # nvm経由でインストールされたmarpのパスは複雑なので、フルパスを直接構築する
-    node_version = "v18.20.4" # 具体的なバージョンを指定
-    marp_path = os.path.join(nvm_dir, "versions/node", node_version, "bin/marp")
-
-    # 既にインストール済みかチェック
-    if os.path.exists(marp_path):
-        st.toast("Marp CLIは既にインストールされています。", icon="✅")
+    marp_path = shutil.which("marp")
+    if marp_path:
         return marp_path
 
-    st.warning("Marp CLIの初回セットアップを行います。これには数分かかります...")
-    with st.spinner("Node.js Version Manager (nvm) と Marp CLI をセットアップ中..."):
+    st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
+    with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
         try:
-            # 複数のコマンドを順に実行する
-            # 1. nvmをダウンロードしてインストール
-            # 2. nvmを有効化
-            # 3. nvmでNode.js v18をインストールして使用
-            # 4. npmでMarp CLIをインストール
-            commands = f"""
-            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-            export NVM_DIR="$HOME/.nvm" && \
-            [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh" && \
-            nvm install {node_version} && \
-            nvm use {node_version} && \
-            npm install -g @marp-team/marp-cli
-            """
-            
-            # `bash -c` を使って一連のシェルスクリプトを実行
+            # Use a specific, stable version of Marp CLI
             result = subprocess.run(
-                ["bash", "-c", commands],
-                check=True, capture_output=True, text=True, encoding='utf-8'
+                "npm install -g @marp-team/marp-cli@2.5.0",
+                shell=True, check=True, capture_output=True, text=True, encoding='utf-8'
             )
-
-            # 再度チェック
-            if os.path.exists(marp_path):
-                st.success("Marp CLIのセットアップが完了しました！")
-                return marp_path
-            else:
-                st.error("セットアップ処理は完了しましたが、Marp CLIが見つかりません。")
+            
+            marp_path = shutil.which("marp")
+            if marp_path is None:
+                st.error("Marp CLIのインストールには成功しましたが、パスを検出できませんでした。")
                 st.code(result.stdout)
                 st.code(result.stderr)
                 return None
-
+            
+            st.success("Marp CLIのインストールが完了しました！")
+            return marp_path
         except subprocess.CalledProcessError as e:
-            st.error("Marp CLIのセットアップに失敗しました。")
+            st.error("Marp CLIのインストールに失敗しました。")
             st.error("エラー詳細:")
             st.code(e.stderr)
             return None
-        except Exception as e:
-            st.error(f"予期せぬエラーが発生しました: {e}")
+        except FileNotFoundError:
+            st.error("`npm` コマンドが見つかりません。")
             return None
 
 MARP_PATH = setup_marp_cli()
 
 
-# --- Helper function for dynamic font size ---
-def get_dynamic_font_size(text, base_size=2.8, min_size=1.0, shrink_factor=15):
-    """Reduces font size for longer text to prevent line breaks."""
-    if len(text) > shrink_factor:
-        # Reduce size more aggressively for very long text
-        reduction = (len(text) - shrink_factor) * 0.15
-        return max(min_size, base_size - reduction)
-    return base_size
-
 # --- Markdown生成関数 ---
 def generate_markdown(
     colloquium_name, title, photo_path, speaker_name, affiliation,
     date_time, location, abstract, colors, abstract_font_size, abstract_height,
-    title_font_size, speaker_font_size
+    title_font_size
 ):
     # (この関数の中身は変更なし)
     style_css = f"""
@@ -181,7 +145,7 @@ def generate_markdown(
     border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); width: 100%;
   }}
   .speaker-name {{
-    font-size: {speaker_font_size}em; font-weight: 700; color: {colors['main_text']}; margin-bottom: 8px;
+    font-size: 1.5em; font-weight: 700; color: {colors['main_text']}; margin-bottom: 8px;
     white-space: nowrap;
   }}
   .affiliation {{
@@ -302,13 +266,10 @@ else:
     b64_svg = base64.b64encode(placeholder_svg.encode('utf-8')).decode('utf-8')
     photo_display_path = f"data:image/svg+xml;base64,{b64_svg}"
 
-# Calculate dynamic font size for speaker name only
-speaker_font_size = get_dynamic_font_size(speaker_name, base_size=1.5, min_size=0.7, shrink_factor=10)
-
 markdown_content = generate_markdown(
     colloquium_name, title, photo_display_path, speaker_name, affiliation,
     date_time, location, abstract, selected_colors, abstract_font_size, abstract_height,
-    title_font_size, speaker_font_size
+    title_font_size
 )
 
 st.subheader("プレビュー")
