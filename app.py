@@ -62,7 +62,14 @@ COLOR_THEMES = {
 def setup_marp_cli():
     """
     Marp CLIがインストールされているか確認し、なければインストールする。
+    Streamlit Cloudの権限エラーを回避するため、ユーザーのローカルディレクトリにインストールする。
     """
+    # Check for marp in the expected local installation path first
+    local_marp_path = os.path.expanduser("~/.local/bin/marp")
+    if os.path.exists(local_marp_path):
+        return local_marp_path
+
+    # Fallback to checking the system PATH
     marp_path = shutil.which("marp")
     if marp_path:
         return marp_path
@@ -70,21 +77,23 @@ def setup_marp_cli():
     st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
     with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
         try:
-            # Use a specific, stable version of Marp CLI
+            # Install locally to avoid permission errors on Streamlit Cloud
+            command = "npm install --prefix ~/.local @marp-team/marp-cli@2.5.0"
             result = subprocess.run(
-                "npm install -g @marp-team/marp-cli@2.5.0",
+                command,
                 shell=True, check=True, capture_output=True, text=True, encoding='utf-8'
             )
             
-            marp_path = shutil.which("marp")
-            if marp_path is None:
+            if os.path.exists(local_marp_path):
+                st.success("Marp CLIのインストールが完了しました！")
+                # Force reload to ensure the new path is recognized
+                st.experimental_rerun()
+                return local_marp_path
+            else:
                 st.error("Marp CLIのインストールには成功しましたが、パスを検出できませんでした。")
                 st.code(result.stdout)
                 st.code(result.stderr)
                 return None
-            
-            st.success("Marp CLIのインストールが完了しました！")
-            return marp_path
         except subprocess.CalledProcessError as e:
             st.error("Marp CLIのインストールに失敗しました。")
             st.error("エラー詳細:")
