@@ -1,2 +1,2 @@
-nodejs
-npm
+curl
+build-essential

@@ -59,44 +59,66 @@ COLOR_THEMES = {
 }
 
 # --- Marp CLI 自動セットアップ ---
+@st.cache_resource
 def setup_marp_cli():
     """
-    Marp CLIがインストールされているか確認し、なければインストールする。
-    Streamlitのキャッシュ機能を使い、アプリのセッション中で一度だけ実行されるようにする。
+    nvmを使用してNode.js v18をインストールし、その環境でMarp CLIをインストールする。
     """
-    marp_path = shutil.which("marp")
-    if marp_path:
-        # st.toast("Marp CLIは既にインストールされています。", icon="✅")
+    # nvmの環境変数を設定
+    home = os.path.expanduser("~")
+    nvm_dir = os.path.join(home, ".nvm")
+    nvm_sh = os.path.join(nvm_dir, "nvm.sh")
+    
+    # marpコマンドのフルパスを探す
+    # nvm経由でインストールされたmarpのパスは複雑なので、フルパスを直接構築する
+    node_version = "v18.20.4" # 具体的なバージョンを指定
+    marp_path = os.path.join(nvm_dir, "versions/node", node_version, "bin/marp")
+
+    # 既にインストール済みかチェック
+    if os.path.exists(marp_path):
+        st.toast("Marp CLIは既にインストールされています。", icon="✅")
         return marp_path
 
-    st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
-    with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
+    st.warning("Marp CLIの初回セットアップを行います。これには数分かかります...")
+    with st.spinner("Node.js Version Manager (nvm) と Marp CLI をセットアップ中..."):
         try:
-            # shell=TrueはWindowsで `npm.cmd` を見つけるためにも役立つ
-            result = subprocess.run(
-                "npm install -g @marp-team/marp-cli",
-                shell=True, check=True, capture_output=True, text=True, encoding='utf-8'
-            )
-            st.success("Marp CLIのインストールが完了しました！")
+            # 複数のコマンドを順に実行する
+            # 1. nvmをダウンロードしてインストール
+            # 2. nvmを有効化
+            # 3. nvmでNode.js v18をインストールして使用
+            # 4. npmでMarp CLIをインストール
+            commands = f"""
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+            export NVM_DIR="$HOME/.nvm" && \
+            [ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh" && \
+            nvm install {node_version} && \
+            nvm use {node_version} && \
+            npm install -g @marp-team/marp-cli
+            """
             
-            # インストール後、再度パスを確認
-            marp_path = shutil.which("marp")
-            if marp_path is None:
-                st.error("Marp CLIのインストールには成功しましたが、パスを検出できませんでした。環境変数PATHの設定をご確認ください。")
+            # `bash -c` を使って一連のシェルスクリプトを実行
+            result = subprocess.run(
+                ["bash", "-c", commands],
+                check=True, capture_output=True, text=True, encoding='utf-8'
+            )
+
+            # 再度チェック
+            if os.path.exists(marp_path):
+                st.success("Marp CLIのセットアップが完了しました！")
+                return marp_path
+            else:
+                st.error("セットアップ処理は完了しましたが、Marp CLIが見つかりません。")
                 st.code(result.stdout)
                 st.code(result.stderr)
-                # ここで停止させるとユーザーが何もできなくなるので、エラー表示に留める
                 return None
-            return marp_path
+
         except subprocess.CalledProcessError as e:
-            st.error("Marp CLIのインストールに失敗しました。")
+            st.error("Marp CLIのセットアップに失敗しました。")
             st.error("エラー詳細:")
             st.code(e.stderr)
-            st.info("お使いの環境にNode.jsとnpmがインストールされているかご確認ください。")
             return None
-        except FileNotFoundError:
-            st.error("`npm` コマンドが見つかりません。")
-            st.info("このアプリをWebにデプロイする場合、`packages.txt`に`nodejs`と`npm`を含めてください。ローカルで実行する場合は、Node.jsをインストールしてください。")
+        except Exception as e:
+            st.error(f"予期せぬエラーが発生しました: {e}")
             return None
 
 MARP_PATH = setup_marp_cli()
