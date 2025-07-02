@@ -89,7 +89,7 @@ def find_or_install_marp_cli():
     # 3. If not found, proceed to install
     print("Marp CLI not found, starting installation...")
     try:
-        command = f"npm install --prefix {install_prefix} @marp-team/marp-cli"
+        command = f"npm install --prefix {install_prefix} @marp-team/marp-cli@2.4.0"
         result = subprocess.run(
             command,
             shell=True,
