@@ -57,37 +57,6 @@ COLOR_THEMES = {
     }
 }
 
-# --- Marp CLI Setup for Streamlit Cloud ---
-def setup_marp_cli():
-    """
-    Robustly installs and finds Marp CLI for Streamlit Cloud environments.
-    """
-    home = os.path.expanduser("~")
-    marp_script_path = os.path.join(home, ".local", "lib", "node_modules", "@marp-team", "marp-cli", "marp-cli.js")
-
-    if os.path.exists(marp_script_path):
-        return ["node", marp_script_path]
-
-    st.warning("Marp CLI not found. Installing automatically...")
-    with st.spinner("Installing Marp CLI... (This may take a moment on first run)"):
-        try:
-            command = "npm install --prefix ~/.local @marp-team/marp-cli@1.7.1"
-            subprocess.run(command, shell=True, check=True, capture_output=True, text=True, encoding='utf-8')
-            
-            if os.path.exists(marp_script_path):
-                st.success("Marp CLI installed successfully! Rerunning page...")
-                st.experimental_rerun()
-            else:
-                st.error("Marp CLI installation succeeded, but the executable could not be found.")
-                return None
-        except Exception as e:
-            st.error(f"Failed to install Marp CLI. Error: {e}")
-            if hasattr(e, 'stderr'):
-                st.code(e.stderr)
-            return None
-
-MARP_PATH = setup_marp_cli()
-
 # --- Markdown Generation ---
 def generate_markdown(
     colloquium_name, title, photo_path, speaker_name, affiliation,
@@ -199,10 +168,6 @@ size: 16:9
 # --- Main App ---
 st.title("Seminar Poster Generator")
 
-if not MARP_PATH:
-    st.error("Marp CLI setup is incomplete. Please check the error messages above.")
-    st.stop()
-
 # --- Sidebar Inputs ---
 with st.sidebar:
     st.header("Poster Information")
@@ -243,8 +208,12 @@ html_path = OUTPUT_DIR / "preview.html"
 md_path.write_text(markdown_content, encoding="utf-8")
 
 try:
-    cmd = MARP_PATH + [str(md_path), "-o", str(html_path), "--html", "--allow-local-files"]
-    subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+    # Use npx to run a specific version of marp-cli, avoiding PATH and permission issues.
+    cmd_html = [
+        "npx", "-p", "@marp-team/marp-cli@1.7.1", "marp",
+        str(md_path), "-o", str(html_path), "--html", "--allow-local-files"
+    ]
+    subprocess.run(cmd_html, check=True, capture_output=True, text=True, encoding='utf-8')
     with open(html_path, "r", encoding="utf-8") as f:
         html_content = f.read()
     st.components.v1.html(html_content, height=550, scrolling=False)
@@ -258,8 +227,12 @@ st.header("Generate PDF")
 if uploaded_photo:
     pdf_path = OUTPUT_DIR / "poster.pdf"
     try:
-        cmd = MARP_PATH + [str(md_path), "-o", str(pdf_path), "--pdf", "--allow-local-files"]
-        subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8')
+        # Use npx again for PDF generation
+        cmd_pdf = [
+            "npx", "-p", "@marp-team/marp-cli@1.7.1", "marp",
+            str(md_path), "-o", str(pdf_path), "--pdf", "--allow-local-files"
+        ]
+        subprocess.run(cmd_pdf, check=True, capture_output=True, text=True, encoding='utf-8')
         with open(pdf_path, "rb") as f:
             st.download_button(
                 label="Download Poster PDF",
