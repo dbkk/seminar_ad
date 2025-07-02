@@ -58,34 +58,70 @@ COLOR_THEMES = {
 }
 
 # --- Marp CLI Setup for Streamlit Cloud ---
-def setup_marp_cli():
+@st.cache_resource(show_spinner="Marp CLIを準備しています...")
+def find_or_install_marp_cli():
     """
-    Robustly installs and finds Marp CLI for Streamlit Cloud environments.
+    Finds Marp CLI in PATH or installs it for Streamlit Cloud.
+    This function is cached for the session.
     """
-    home = os.path.expanduser("~")
-    local_marp_path = os.path.join(home, ".local", "bin", "marp")
+    # 1. Check standard PATH first (best for local development)
+    marp_path = shutil.which("marp")
+    if marp_path:
+        print(f"Marp CLI found in PATH: {marp_path}")
+        return marp_path
 
-    if os.path.exists(local_marp_path):
-        return local_marp_path
+    # 2. If not in PATH, check the specific location for Streamlit Cloud
+    home = Path.home()
+    cloud_marp_path = home / ".local" / "bin" / "marp"
+    if cloud_marp_path.exists():
+        print(f"Marp CLI found in Streamlit Cloud custom path: {cloud_marp_path}")
+        return str(cloud_marp_path)
 
-    # Fallback for local development
-    if shutil.which("marp"):
-        return shutil.which("marp")
-
-    st.warning("Marp CLIが見つかりません。初回起動時に自動インストールを行います...")
-    with st.spinner("Marp CLIをインストール中です... (初回のみ数分かかることがあります)"):
-        try:
-            command = "npm install --prefix ~/.local @marp-team/marp-cli@1.7.1"
-            subprocess.run(command, shell=True, check=True, capture_output=True, text=True, encoding='utf-8')
-            st.success("Marp CLIのインストールが完了しました！ページを再読み込みします。")
+    # 3. If not found anywhere, install it (for Streamlit Cloud's first run)
+    print("Marp CLI not found, starting installation...")
+    try:
+        command = "npm install --prefix ~/.local @marp-team/marp-cli"
+        result = subprocess.run(
+            command,
+            shell=True,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding='utf-8'
+        )
+        print(f"Marp CLI installation successful:\n{result.stdout}")
+        
+        # Check again if the path now exists after installation
+        if cloud_marp_path.exists():
+            st.success("Marp CLIのインストールが完了しました！")
+            # We don't rerun here. The app flow continues, and the next time
+            # something needs Marp, this function will return the correct path.
+            # However, for a better user experience on first load, we can trigger a rerun.
             st.rerun()
-        except Exception as e:
-            st.error(f"Marp CLIのインストールに失敗しました。エラー: {e}")
-            if hasattr(e, 'stderr'):
-                st.code(e.stderr)
+            return str(cloud_marp_path)
+        else:
+            st.error("Marp CLIをインストールしましたが、実行ファイルが見つかりません。")
+            st.code(f"想定パス: {cloud_marp_path}")
             return None
 
-MARP_PATH = setup_marp_cli()
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        st.error("Marp CLIのインストールに失敗しました。")
+        if isinstance(e, subprocess.CalledProcessError):
+            st.error(f"終了コード: {e.returncode}")
+            st.code(e.stderr, language="bash")
+        else:
+            st.error("`npm`コマンドが見つかりませんでした。`packages.txt`に`nodejs`と`npm`が含まれているか確認してください。")
+        return None
+
+# --- Main App ---
+# st.title("セミナーポスター自動生成ツール")
+
+# 呼び出し部分を修正
+MARP_PATH = find_or_install_marp_cli()
+
+if not MARP_PATH:
+    st.error("Marp CLIのセットアップが完了していません。上記のエラーメッセージをご確認ください。")
+    st.stop()
 
 # --- Helper function for dynamic font size ---
 def get_dynamic_font_size(text, base_size=1.5, min_size=0.8, shrink_factor=12):
