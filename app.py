@@ -78,7 +78,7 @@ def setup_marp_cli():
             command = "npm install --prefix ~/.local @marp-team/marp-cli@1.7.1"
             subprocess.run(command, shell=True, check=True, capture_output=True, text=True, encoding='utf-8')
             st.success("Marp CLIのインストールが完了しました！ページを再読み込みします。")
-            st.experimental_rerun()
+            st.rerun()
         except Exception as e:
             st.error(f"Marp CLIのインストールに失敗しました。エラー: {e}")
             if hasattr(e, 'stderr'):
